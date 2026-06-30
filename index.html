@@ -638,8 +638,16 @@ function renderLeaderboard() {
   `).join("");
 }
 
+let editingRound = null;
+let editSelection = []; // up to 4 players picked for the round being edited
+let editTeamA = []; // up to 2 of those 4, assigned to team A
+
 function renderRounds() {
-  document.getElementById("rounds").innerHTML = state.rounds.map(r => `
+  document.getElementById("rounds").innerHTML = state.rounds.map(r => {
+    if (editingRound === r.num) {
+      return renderEditCard(r);
+    }
+    return `
     <div class="card">
       <div class="round-header">
         <span class="round-title"><span class="round-num-badge ${r.winner ? 'done' : ''}">${r.num}</span> Round ${r.num}</span>
@@ -656,8 +664,111 @@ function renderRounds() {
           ${r.winner === 'B' ? '<span class="team-check">✓</span>' : ''}
         </button>
       </div>
+      <button class="secondary" style="margin-top:10px;" onclick="startEditRound(${r.num})">✏️ Edit this round</button>
     </div>
-  `).join("");
+  `;
+  }).join("");
+}
+
+function startEditRound(roundNum) {
+  const r = state.rounds.find(x => x.num === roundNum);
+  editingRound = roundNum;
+  editSelection = [...r.teamA, ...r.teamB];
+  editTeamA = [...r.teamA];
+  renderRounds();
+}
+
+function cancelEditRound() {
+  editingRound = null;
+  editSelection = [];
+  editTeamA = [];
+  renderRounds();
+}
+
+function toggleEditPlayer(name) {
+  const idx = editSelection.indexOf(name);
+  if (idx >= 0) {
+    editSelection.splice(idx, 1);
+    const tIdx = editTeamA.indexOf(name);
+    if (tIdx >= 0) editTeamA.splice(tIdx, 1);
+  } else {
+    if (editSelection.length >= 4) {
+      alert("You can only pick 4 players for a round (1 court = 2v2).");
+      return;
+    }
+    editSelection.push(name);
+  }
+  renderRounds();
+}
+
+function toggleEditTeamA(name) {
+  if (!editSelection.includes(name)) return;
+  const idx = editTeamA.indexOf(name);
+  if (idx >= 0) {
+    editTeamA.splice(idx, 1);
+  } else {
+    if (editTeamA.length >= 2) {
+      alert("Team A can only have 2 players.");
+      return;
+    }
+    editTeamA.push(name);
+  }
+  renderRounds();
+}
+
+function renderEditCard(r) {
+  const chips = state.players.map(p => {
+    const selected = editSelection.includes(p);
+    return `<div class="chip ${selected ? 'active' : ''}" onclick="toggleEditPlayer('${p}')">${p}</div>`;
+  }).join("");
+
+  let teamPickerHtml = "";
+  if (editSelection.length === 4) {
+    const teamChips = editSelection.map(p => {
+      const inA = editTeamA.includes(p);
+      return `<div class="chip ${inA ? 'active' : ''}" onclick="toggleEditTeamA('${p}')">${p}</div>`;
+    }).join("");
+    teamPickerHtml = `
+      <div style="margin-top:14px;">
+        <label>Tap 2 players for Team A (rest go to Team B)</label>
+        <div class="chip-row">${teamChips}</div>
+      </div>
+    `;
+  }
+
+  const canSave = editSelection.length === 4 && editTeamA.length === 2;
+
+  return `
+    <div class="card" style="border-color: var(--accent);">
+      <div class="round-header">
+        <span class="round-title"><span class="round-num-badge done">${r.num}</span> Editing Round ${r.num}</span>
+      </div>
+      <label>Tap exactly 4 players who will play this round</label>
+      <div class="chip-row">${chips}</div>
+      ${teamPickerHtml}
+      <div style="display:flex; gap:8px; margin-top:14px;">
+        <button class="secondary" style="margin-top:0;" onclick="cancelEditRound()">Cancel</button>
+        <button class="primary" style="padding:12px; ${canSave ? '' : 'opacity:0.4; pointer-events:none;'}" onclick="saveEditedRound(${r.num})">Save Round ${r.num}</button>
+      </div>
+    </div>
+  `;
+}
+
+async function saveEditedRound(roundNum) {
+  if (editSelection.length !== 4 || editTeamA.length !== 2) return;
+  const r = state.rounds.find(x => x.num === roundNum);
+  const teamB = editSelection.filter(p => !editTeamA.includes(p));
+  r.teamA = [...editTeamA];
+  r.teamB = teamB;
+  r.sitting = state.players.filter(p => !editSelection.includes(p));
+  r.winner = null; // clear result since matchup changed
+
+  editingRound = null;
+  editSelection = [];
+  editTeamA = [];
+
+  renderGame();
+  await saveState();
 }
 
 function renderGame() {
