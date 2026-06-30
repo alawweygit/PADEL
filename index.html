@@ -297,7 +297,7 @@ Ramy"></textarea>
 </div>
 
 <script>
-const KVDB_BASE = "https://kvdb.io";
+const FIREBASE_DB_BASE = "https://padel-a3470-default-rtdb.firebaseio.com";
 
 let state = null;
 let bucketId = null;
@@ -464,13 +464,18 @@ async function createSession() {
   showGameView();
 
   try {
-    // Create a new bucket on kvdb.io (no signup/API key needed)
-    const createRes = await fetch(KVDB_BASE, { method: "POST" });
-    const newBucketId = (await createRes.text()).trim();
+    // Create a new session entry using Firebase's REST API (POST generates a unique push ID)
+    const createRes = await fetch(`${FIREBASE_DB_BASE}/sessions.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state)
+    });
+    const result = await createRes.json();
+    const newBucketId = result && result.name;
 
     if (newBucketId) {
       bucketId = newBucketId;
-      await saveState();
+      lastSavedJSON = JSON.stringify(state);
       const url = new URL(window.location.href);
       url.searchParams.set("session", bucketId);
       window.history.replaceState({}, "", url);
@@ -651,9 +656,9 @@ async function saveState() {
   try {
     const json = JSON.stringify(state);
     lastSavedJSON = json;
-    await fetch(`${KVDB_BASE}/${bucketId}/session`, {
+    await fetch(`${FIREBASE_DB_BASE}/sessions/${bucketId}.json`, {
       method: "PUT",
-      headers: { "Content-Type": "text/plain" },
+      headers: { "Content-Type": "application/json" },
       body: json
     });
   } catch (e) {
@@ -664,11 +669,11 @@ async function saveState() {
 async function fetchState() {
   if (!bucketId) return;
   try {
-    const res = await fetch(`${KVDB_BASE}/${bucketId}/session`);
+    const res = await fetch(`${FIREBASE_DB_BASE}/sessions/${bucketId}.json`);
     if (res.ok) {
-      const text = await res.text();
-      if (text && text !== lastSavedJSON) {
-        const fresh = JSON.parse(text);
+      const fresh = await res.json();
+      const text = JSON.stringify(fresh);
+      if (fresh && text !== lastSavedJSON) {
         state = fresh;
         lastSavedJSON = text;
         renderGame();
