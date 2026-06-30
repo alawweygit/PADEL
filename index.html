@@ -265,6 +265,14 @@ Ramy"></textarea>
     <div class="rounds-calc-label">Rounds needed for full rotation</div>
     <div class="rounds-calc-num" id="roundsCalc">-</div>
     <div class="rounds-calc-sub" id="roundsCalcSub">so everyone partners with everyone</div>
+    <div id="balanceNote" style="margin-top:10px; font-size:12.5px;"></div>
+  </div>
+
+  <div class="field hidden" id="useBalancedField">
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; font-size:13.5px;">
+      <input type="checkbox" id="useBalancedRounds" style="width:auto; margin:0;" onchange="updateRoundsCalc(getPlayerNamesFromInput())">
+      Use the perfectly balanced round count instead (everyone plays exactly the same number of rounds)
+    </label>
   </div>
 
   <button class="primary" onclick="createSession()">⚡ Generate Schedule & Get Link</button>
@@ -320,10 +328,34 @@ function updateRoundsCalc(names) {
   const box = document.getElementById("roundsInfo");
   const calc = document.getElementById("roundsCalc");
   const sub = document.getElementById("roundsCalcSub");
+  const note = document.getElementById("balanceNote");
+  const balancedField = document.getElementById("useBalancedField");
+
   if (names.length >= 4 && names.length <= 10) {
-    const needed = minRoundsNeeded(names.length);
-    calc.textContent = needed;
-    sub.textContent = `for all ${names.length} players to partner with everyone`;
+    const n = names.length;
+    const minR = minRoundsNeeded(n);
+    const balanced = isBalanced(n, minR);
+    const nextBal = nextBalancedRound(n, minR);
+    const useBalanced = document.getElementById("useBalancedRounds").checked && !balanced;
+    const finalRounds = useBalanced ? nextBal : minR;
+
+    calc.textContent = finalRounds;
+    sub.textContent = `for all ${n} players to partner with everyone`;
+
+    if (balanced) {
+      note.innerHTML = `✓ <span style="color:var(--accent); font-weight:700;">Perfectly balanced</span> — every player plays exactly the same number of rounds.`;
+      balancedField.classList.add("hidden");
+    } else {
+      const minPlay = Math.floor(4 * minR / n);
+      const maxPlay = Math.ceil(4 * minR / n);
+      if (useBalanced) {
+        note.innerHTML = `✓ <span style="color:var(--accent); font-weight:700;">Perfectly balanced</span> at ${nextBal} rounds — every player plays exactly the same number of rounds.`;
+      } else {
+        note.innerHTML = `⚠️ At ${minR} rounds, play counts can't split perfectly evenly — most players play ${minPlay}, a couple play ${maxPlay} (unavoidable difference of 1, mathematically the fairest possible). For a perfectly even split, use ${nextBal} rounds instead.`;
+      }
+      balancedField.classList.remove("hidden");
+    }
+
     box.style.display = "block";
   } else {
     box.style.display = "none";
@@ -350,6 +382,16 @@ function getLatePlayers() {
 function minRoundsNeeded(n) {
   const totalPairs = n * (n - 1) / 2;
   return Math.ceil(totalPairs / 2);
+}
+
+function isBalanced(n, r) {
+  return (4 * r) % n === 0;
+}
+
+function nextBalancedRound(n, r) {
+  let x = r;
+  while (!isBalanced(n, x)) x++;
+  return x;
 }
 
 function generateSchedule(players, numRounds, latePlayers) {
@@ -448,7 +490,9 @@ async function createSession() {
   }
 
   const latePlayers = getLatePlayers();
-  const numRounds = minRoundsNeeded(names.length);
+  const minR = minRoundsNeeded(names.length);
+  const useBalanced = document.getElementById("useBalancedRounds").checked && !isBalanced(names.length, minR);
+  const numRounds = useBalanced ? nextBalancedRound(names.length, minR) : minR;
 
   const sessionName = document.getElementById("sessionName").value.trim() || "Padel";
   const rounds = generateSchedule(names, numRounds, latePlayers);
