@@ -664,7 +664,10 @@ function renderRounds() {
           ${r.winner === 'B' ? '<span class="team-check">✓</span>' : ''}
         </button>
       </div>
-      <button class="secondary" style="margin-top:10px;" onclick="startEditRound(${r.num})">✏️ Edit this round</button>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button class="secondary" style="margin-top:0; flex:1;" onclick="startEditRound(${r.num})">✏️ Edit</button>
+        <button class="secondary" style="margin-top:0; flex:1; color:var(--danger); border-color:rgba(255,107,107,0.3);" onclick="deleteRound(${r.num})">🗑️ Delete</button>
+      </div>
     </div>
   `;
   }).join("");
@@ -752,6 +755,23 @@ function renderEditCard(r) {
       </div>
     </div>
   `;
+}
+
+async function deleteRound(roundNum) {
+  if (!confirm(`Delete Round ${roundNum}? This cannot be undone.`)) return;
+
+  state.rounds = state.rounds
+    .filter(r => r.num !== roundNum)
+    .map((r, i) => ({ ...r, num: i + 1 })); // renumber remaining rounds sequentially
+
+  if (editingRound === roundNum) {
+    editingRound = null;
+    editSelection = [];
+    editTeamA = [];
+  }
+
+  renderGame();
+  await saveState();
 }
 
 async function saveEditedRound(roundNum) {
