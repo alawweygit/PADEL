@@ -1,6 +1,6 @@
-# Padel Americano
+# Padel
 
-A live, shareable scoreboard for padel "Americano" style sessions — rotating 2v2 doubles where partners change each round so individual points accumulate fairly across the group.
+A live, shareable scoreboard for padel sessions — rotating 2v2 doubles where partners change each round so individual points accumulate fairly across the group.
 
 ## Features
 - Enter 4–10 players, auto-calculates minimum rounds needed for everyone to partner with everyone

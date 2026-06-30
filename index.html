@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Padel Americano</title>
+<title>Padel</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
@@ -236,7 +236,7 @@
 <div id="setupView">
   <div class="brand">
     <div class="brand-icon">🎾</div>
-    <h1>Padel Americano</h1>
+    <h1>Padel</h1>
   </div>
   <div class="subtitle">Set up today's session</div>
 
@@ -274,7 +274,7 @@ Ramy"></textarea>
 <div id="gameView" class="hidden">
   <div class="brand">
     <div class="brand-icon">🎾</div>
-    <h1 id="sessionTitle">Padel Americano</h1>
+    <h1 id="sessionTitle">Padel</h1>
   </div>
   <div class="status"><span class="status-dot"></span><span id="statusLine">Syncing...</span></div>
 
@@ -297,11 +297,12 @@ Ramy"></textarea>
 </div>
 
 <script>
-const JSONBLOB_BASE = "https://jsonblob.com/api/jsonBlob";
+const KVDB_BASE = "https://kvdb.io";
 
 let state = null;
-let blobId = null;
+let bucketId = null;
 let pollTimer = null;
+let lastSavedJSON = null;
 
 // ---------- Setup view helpers ----------
 
@@ -449,7 +450,7 @@ async function createSession() {
   const latePlayers = getLatePlayers();
   const numRounds = minRoundsNeeded(names.length);
 
-  const sessionName = document.getElementById("sessionName").value.trim() || "Padel Americano";
+  const sessionName = document.getElementById("sessionName").value.trim() || "Padel";
   const rounds = generateSchedule(names, numRounds, latePlayers);
 
   state = {
@@ -463,27 +464,20 @@ async function createSession() {
   showGameView();
 
   try {
-    const res = await fetch(JSONBLOB_BASE, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify(state)
-    });
-    const location = res.headers.get("Location") || res.headers.get("location");
-    if (location) {
-      blobId = location.split("/").pop();
-    } else {
-      // fallback: some browsers hide Location header due to CORS; try response body parse
-      const text = await res.text();
-      console.log("No location header, response:", text);
-    }
-    if (blobId) {
+    // Create a new bucket on kvdb.io (no signup/API key needed)
+    const createRes = await fetch(KVDB_BASE, { method: "POST" });
+    const newBucketId = (await createRes.text()).trim();
+
+    if (newBucketId) {
+      bucketId = newBucketId;
+      await saveState();
       const url = new URL(window.location.href);
-      url.searchParams.set("session", blobId);
+      url.searchParams.set("session", bucketId);
       window.history.replaceState({}, "", url);
       updateShareLink();
       startPolling();
     } else {
-      document.getElementById("statusLine").textContent = "Created locally (link sharing unavailable — CORS blocked the session ID). You can still use this on your own device.";
+      document.getElementById("statusLine").textContent = "Could not create shared session — using local mode only.";
     }
   } catch (e) {
     console.error(e);
@@ -653,12 +647,14 @@ async function setWinner(roundNum, team) {
 }
 
 async function saveState() {
-  if (!blobId) return;
+  if (!bucketId) return;
   try {
-    await fetch(`${JSONBLOB_BASE}/${blobId}`, {
+    const json = JSON.stringify(state);
+    lastSavedJSON = json;
+    await fetch(`${KVDB_BASE}/${bucketId}/session`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify(state)
+      headers: { "Content-Type": "text/plain" },
+      body: json
     });
   } catch (e) {
     console.error("Save failed", e);
@@ -666,15 +662,17 @@ async function saveState() {
 }
 
 async function fetchState() {
-  if (!blobId) return;
+  if (!bucketId) return;
   try {
-    const res = await fetch(`${JSONBLOB_BASE}/${blobId}`, {
-      headers: { "Accept": "application/json" }
-    });
+    const res = await fetch(`${KVDB_BASE}/${bucketId}/session`);
     if (res.ok) {
-      const fresh = await res.json();
-      state = fresh;
-      renderGame();
+      const text = await res.text();
+      if (text && text !== lastSavedJSON) {
+        const fresh = JSON.parse(text);
+        state = fresh;
+        lastSavedJSON = text;
+        renderGame();
+      }
     }
   } catch (e) {
     console.error("Fetch failed", e);
@@ -683,7 +681,7 @@ async function fetchState() {
 
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(fetchState, 4000);
+  pollTimer = setInterval(fetchState, 3000);
 }
 
 // ---------- Load existing session from URL ----------
@@ -692,15 +690,16 @@ async function init() {
   const url = new URL(window.location.href);
   const sessionId = url.searchParams.get("session");
   if (sessionId) {
-    blobId = sessionId;
-    document.getElementById("statusLine").textContent = "Loading session...";
-    showGameView();
+    bucketId = sessionId;
+    document.getElementById("setupView").classList.add("hidden");
     await fetchState();
     if (state) {
+      showGameView();
       updateShareLink();
       startPolling();
     } else {
-      document.getElementById("statusLine").textContent = "Could not load this session — it may have expired.";
+      document.getElementById("setupView").classList.remove("hidden");
+      alert("Could not load this session — it may have expired or the link is incorrect.");
     }
   } else {
     refreshLateChips();
